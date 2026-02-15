@@ -2,9 +2,6 @@
 import { createAppKit } from '@reown/appkit/vue'
 import { wagmiAdapter, networks, projectId } from './config/appkit'
 
-// const config = useRuntimeConfig()
-// const projectId = config.public.reown_project_id
-
 const metadata = {
   name: 'Civ',
   description: 'A monad powered agent world',
