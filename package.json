@@ -10,13 +10,20 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@reown/appkit": "^1.8.18",
+    "@reown/appkit-adapter-wagmi": "^1.8.18",
     "@supabase/supabase-js": "^2.95.3",
     "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/vue-query": "^5.92.9",
+    "@wagmi/core": "^3.3.3",
+    "@wagmi/vue": "^0.4.16",
     "groq-sdk": "^0.37.0",
     "nuxt": "^4.3.1",
     "pixi.js": "^8.16.0",
     "tailwindcss": "^4.1.18",
+    "viem": "^2.46.0",
     "vue": "^3.5.28",
-    "vue-router": "^4.6.4"
+    "vue-router": "^4.6.4",
+    "wagmi": "^3.4.3"
   }
 }
