@@ -5,7 +5,7 @@ import { wagmiAdapter, networks, projectId } from './config/appkit'
 const metadata = {
   name: 'Civ',
   description: 'A monad powered agent world',
-  url: 'https://civ-woad.vercel.app/',
+  url: 'http://localhost:3000/',
   icons: ['https://avatars.mywebsite.com/']
 }
 

@@ -318,7 +318,7 @@ export const useGameLoop = () => {
       },
 
       meta: {
-        image: "sprites/humans/base/human_base.png",
+        image: "../../sprites/humans/base/human_base.png",
         format: "RGBA8888",
         size: { w: 64, h: 192 },
         scale: 1,

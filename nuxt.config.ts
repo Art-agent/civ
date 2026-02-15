@@ -5,7 +5,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
   css: ['./app/assets/css/main.css'],
-  // ssr: false,
+  ssr: false,
   modules: ['@wagmi/vue/nuxt'],
   runtimeConfig: {
     public: {
