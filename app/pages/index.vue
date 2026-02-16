@@ -1,5 +1,21 @@
+<script setup lang="ts">
+import { useAccount, useBalance } from '@wagmi/vue'
+
+const { address, isConnected, chainId, chain } = useAccount()
+const { data: balance } = useBalance({
+  address: address.value,
+})
+
+const caipAddress = computed(() => {
+  if (!address.value || !chainId.value) return null
+  return `eip155:${chainId.value}:${address.value}`
+})
+
+
+</script>
+
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+  <div class="min-h-screen bg-white">
     <!-- Navigation -->
     <nav class="fixed top-0 w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-800 z-40">
       <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -11,7 +27,7 @@
         <div class="flex items-center space-x-6">
           <a href="#features" class="text-gray-300 hover:text-white transition">Features</a>
           <a href="#how-it-works" class="text-gray-300 hover:text-white transition">How It Works</a>
-          <!-- <appkit-button /> -->
+          <appkit-button /> 
         </div>
       </div>
     </nav>
@@ -220,60 +236,4 @@
   </div>
 </template>
 
-<script setup lang="ts">
-// import { ref } from 'vue'
-// import { ethers } from 'ethers'
 
-// const { isConnected, walletAddress, signer } = useReownWallet()
-// const moltbookUsername = ref('')
-// const spawning = ref(false)
-// const hasAgent = ref(false)
-// const canvasRef = ref<HTMLCanvasElement | null>(null)
-// const gameSection = ref<HTMLElement | null>(null)
-
-// const AGENT_CONTRACT = '0x...' // Your deployed contract
-// const ABI = [...] // Your ABI
-
-// const scrollToGame = () => {
-//   gameSection.value?.scrollIntoView({ behavior: 'smooth' })
-// }
-
-// const spawnAgent = async () => {
-//   if (!moltbookUsername.value) return
-  
-//   spawning.value = true
-//   try {
-//     const contract = new ethers.Contract(AGENT_CONTRACT, ABI, signer)
-//     const tx = await contract.spawnAgent(moltbookUsername.value, {
-//       value: ethers.parseEther('0.01')
-//     })
-    
-//     await tx.wait()
-//     hasAgent.value = true
-    
-//     // Initialize game
-//     nextTick(() => {
-//       if (canvasRef.value) {
-//         initGame(canvasRef.value)
-//       }
-//     })
-    
-//   } catch (error: any) {
-//     console.error('Error:', error)
-//     alert('Failed to spawn agent')
-//   } finally {
-//     spawning.value = false
-//   }
-// }
-
-// const truncateAddress = (addr: string | null) => {
-//   if (!addr) return ''
-//   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-// }
-
-// const initGame = (canvas: HTMLCanvasElement) => {
-//   // Your game initialization logic
-//   const { initGame: startGame } = useGameLoop()
-//   startGame(canvas)
-// }
-</script>

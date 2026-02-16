@@ -18,6 +18,7 @@ export type AgentInclination = 'none' | 'religious' | 'activism'; // will increa
 
 export interface Agent {
   id: string
+  wallet_address?: string
   name: string
   country: CountryChoice
   position: Position

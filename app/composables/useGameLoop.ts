@@ -14,37 +14,37 @@ import type {
 } from "#shared/types/Game";
 import { useAgents } from "./useAgents";
 import { useGroq } from "./useGroq";
+import { useAtlas } from "./useAtlas";
 import { showThought } from "./useThoughtBubble";
+import { useDatabase } from "./useDatabase";
 
-// Right now the Agent type isn't hooked to the sprite being rendered.
-// This will change as soon as we get thought bubble working
-
-// 1. Right now we want to call the AI for thoughts at certain intervals
-// 2. Then we want to use the worldcontext and agent position to feed to the AI
-// 3. Then we can test to see if bubbles work
-// 4. Then we can port over to main Agent type instead of premade type
-//
 
 export const useGameLoop = () => {
   const app = shallowRef<PIXI.Application | null>(null);
-  const { agents, spawnInitialAgents, createAgent, updateAgentBehavior } =
-    useAgents();
+  // const { agents, spawnInitialAgents, createAgent, updateAgentBehavior } = useAgents();
+  const { createAgent, getAllAgents, updateAgentPosition, getAllBuildings, storeConversation, getAllCountries, subscribeToAgents } = useDatabase();
+  const { createSpriteSheetData, createTreeSpritesheet, createBuildingSpritesheet } = useAtlas();
   const houses = useState<House[]>("houses", () => []);
   const countries = useState<Country[]>("countries", () => []);
   const event = useState<GameActivity[]>("gameactivity", () => []);
   const selectedAgent = useState<Agent | null>("selectedagent", () => null);
   const isPaused = useState("isPaused", () => false);
-  const entities = useState<any[]>("entities", () => []);
+  
+  const conversationCooldowns = new Map<string, number>();
+  const CONVERSATION_COOLDOWN = 30000 // 30 seconds between conversations
+  const CONVERSATION_DISTANCE = 50 // Distance to trigger conversation
+  const CONVERSATION_PROBABILITY = 0.5 // Probability that two agents will talk or converse
+  
+  
   const { getAgentDecision } = useGroq();
-  const SPRITE_SIZE = 16;
   const AI_CALL_INTERVAL = 20000; // Stands for 8 seconds
   var lastAiUpdate = 0;
 
-  let agentSprites = new Map<string, PIXI.Graphics>();
-  let houseSprites = new Map<string, PIXI.Graphics>();
-  let agentLabels = new Map<string, PIXI.Text>();
-
-  const initGame = async (canvas: HTMLCanvasElement) => {
+  // We will store agent sprites via agentId
+  let agentSprites = new Map<string, any>();
+  
+  
+  const initGame = async (canvas: HTMLCanvasElement, userWallet?: string, username?: string) => {
     // Create the pixi Application
     app.value = new PIXI.Application();
     await app.value.init({
@@ -56,62 +56,56 @@ export const useGameLoop = () => {
       preference: "webgl",
     });
     
-    console.log(app.value);
-    // Render one country we can track for now
-    countries.value = [
-      {
-        id: "Aurelia",
-        name: "Aurelia",
-        color: 0xf7e898,
-        agentCount: 2,
-        leader: "",
-        territory: [
-          { x: 100, y: 100 },
-          { x: 800, y: 800 },
-        ], // This will dictate starting position and size of the map
-        atWar: false,
-        laws: [],
-        treasury: 1000,
-      },
-    ];
-
-    drawTerritories(countries.value);
-
+    await drawTerritories();
+    await renderBuildingsAndObjects();
     const spritesheet = await useHumanSpriteSheet();
 
-    const person1 = createAnimatedPerson(spritesheet, 150, 150, 1.5);
-    const person2 = createAnimatedPerson(spritesheet, 200, 200, 1.5);
-
-    const angle1 = Math.random() * Math.PI * 2;
-    person1.velocityX = Math.cos(angle1) * person1.speed;
-    person1.velocityY = Math.sin(angle1) * person1.speed;
-
-    const angle2 = Math.random() * Math.PI * 2;
-    person2.velocityX = Math.cos(angle2) * person2.speed;
-    person2.velocityY = Math.sin(angle2) * person2.speed;
-
-    // Store entities (for updating in game loop)
-    entities.value = [person1, person2];
-
-    app.value.stage.addChild(person1.sprite);
-    app.value.stage.addChild(person2.sprite);
-
-    // Start game loop with entities
-    app.value.ticker.add(() => gameLoop(entities.value, countries.value));
+    // const person1 = createAnimatedPerson(spritesheet, 150, 150, 1.5);
+    // const person2 = createAnimatedPerson(spritesheet, 200, 200, 1.5);
+    
+    // We will eventually get the user agent to load first but for now lets render some agents
+    const allAgents = await getAllAgents();
+    allAgents.forEach((agent) => {
+      if (agent) {
+        const entity = createAnimatedPerson(
+          spritesheet,
+          agent.position.x,
+          agent.position.y,
+          agent.id,
+          agent,
+          1.5
+        )
+        agentSprites.set(agent.id, { ...entity, agent });
+        const angle1 = Math.random() * Math.PI * 2;
+        entity.velocityX = Math.cos(angle1) * entity.speed;
+        app.value!.stage.addChild(entity.sprite);
+      }
+    });
+    //16116376
+    subscribeToAgents((updatedAgents) => {
+      syncAgents(updatedAgents, spritesheet);
+    });
+    
+    const allMadeCountries = await getAllCountries()
+    
+    app.value.ticker.add(() => gameLoop(allMadeCountries));
   };
 
-  const drawTerritories = (countries_to_be_drawn: Country[]) => {
+  const drawTerritories = async () => {
     if (!app.value) return;
-    if (!countries.value) return;
+    const countries = await getAllCountries();
+    console.log("---COUNTRIES---")
+    console.log(countries)
+    
 
     const country_graphics = new PIXI.Graphics();
 
-    countries_to_be_drawn.forEach((country) => {
-      const country_size_x = country.territory[1]!.x - country.territory[0]!.x;
-      const country_size_y = country.territory[1]!.y - country.territory[0]!.y;
+    countries.forEach((country) => {
+      const country_size_x = country.territory_x2 - country.territory_x1;
+      const country_size_y = country.territory_y2 - country.territory_y1;
       country_graphics.rect(
-        country.territory[0]!.x,
-        country.territory[0]!.x,
+        country.territory_x1,
+        country.territory_y1,
         country_size_x,
         country_size_y,
       );
@@ -120,213 +114,152 @@ export const useGameLoop = () => {
 
     app.value.stage.addChild(country_graphics);
   };
-
-  const createSpriteSheetData = () => {
-    // Why cant this be in types so i can import it here. will do that soon
-    const SPRITE_SHEET = 32;
-    const atlasData = {
-      frames: {
-        idle_down_0: {
-          frame: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
+  
+  const renderBuildingsAndObjects = async () => {
+    if (!app.value) return
+    const building_and_objects = await getAllBuildings();
+    console.log(building_and_objects);
+    // const bao = new PIXI.Graphics();
+    building_and_objects.forEach(async (builds) => {
+      if (builds.type === 'tree') {
+        const treeData = createTreeSpritesheet();
+        const tree_texture = await PIXI.Assets.load(treeData.meta.image)
+        const spritesheet = new PIXI.Spritesheet(tree_texture.source, treeData);
+        await spritesheet.parse();
+        const sprite = new PIXI.AnimatedSprite(spritesheet.animations.tree);
+        sprite.position.set(builds.x, builds.y);
+        sprite.anchor.set(0.5);
+        sprite.scale.set(1.5);
+        app.value!.stage.addChild(sprite);
+      }
+      else if (builds.type === 'capitol') {
+        const buildData = createBuildingSpritesheet();
+        const build_texture = await PIXI.Assets.load(buildData.meta.image)
+        const spritesheet = new PIXI.Spritesheet(build_texture.source, buildData);
+        await spritesheet.parse();
+        const sprite = new PIXI.AnimatedSprite(spritesheet.animations.capitol);
+        sprite.position.set(builds.x, builds.y);
+        sprite.anchor.set(0.5);
+        sprite.scale.set(1);
+        app.value!.stage.addChild(sprite);
+      }
+      else if (builds.type === 'court') {
+        const buildData = createBuildingSpritesheet();
+        const build_texture = await PIXI.Assets.load(buildData.meta.image)
+        const spritesheet = new PIXI.Spritesheet(build_texture.source, buildData);
+        await spritesheet.parse();
+        const sprite = new PIXI.AnimatedSprite(spritesheet.animations.court);
+        sprite.position.set(builds.x, builds.y);
+        sprite.anchor.set(0.5);
+        sprite.scale.set(1);
+        app.value!.stage.addChild(sprite);
+      }
+      else if (builds.type === 'bank') {
+        const buildData = createBuildingSpritesheet();
+        const build_texture = await PIXI.Assets.load(buildData.meta.image)
+        const spritesheet = new PIXI.Spritesheet(build_texture.source, buildData);
+        await spritesheet.parse();
+        const sprite = new PIXI.AnimatedSprite(spritesheet.animations.bank);
+        sprite.position.set(builds.x, builds.y);
+        sprite.anchor.set(0.5);
+        sprite.scale.set(1);
+        app.value!.stage.addChild(sprite);
+      }
+    })
+  }
+  
+  const makeAgentClickable = (entity: PIXI.Sprite, agent: Agent) => {
+    entity.eventMode = 'static';
+    entity.cursor = 'pointer';
+    
+    entity.on('pointerdown', () => {
+      selectedAgent.value = agent;
+      console.log(`Selected Agent:`, agent.name)
+    })
+  }
+  
+  const checkAgentProximity = async () => {
+    const agentArray = Array.from(agentSprites.values())
+    for (let i = 0; i < agentArray.length; i++) {
+      for (let j = i+1; j < agentArray.length; j++) {
+        const entity1 = agentArray[i];
+        const entity2 = agentArray[j];
+        
+        const dx = entity1.x - entity2.x;
+        const dy = entity1.y - entity2.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < CONVERSATION_DISTANCE) {
+          const pairId = [entity1.agentId, entity2.agentId].sort().join('-');
+          //check cooldown
+          const lastConversation = conversationCooldowns.get(pairId) || 0;
+          const now = Date.now();
+          if (now - lastConversation < CONVERSATION_COOLDOWN) {
+            continue; // Still on cooldown
+          }
+                  
+          // Roll probability
+          if (Math.random() > CONVERSATION_PROBABILITY) {
+            continue; // Failed probability check
+          }
+                  
+          // Trigger conversation!
+          await initiateConversation(entity1, entity2);
+          conversationCooldowns.set(pairId, now);
+        }
+      }
+    }
+  }
+  
+  const initiateConversation = async (entity1: any, entity2: any) => {
+    if (!app.value) return
+    const agent1 = entity1.agent;
+    const agent2 = entity2.agent;
+    
+    console.log(`${agent1.name} meets ${agent2.name} and starts a conversation`);
+    
+    try {
+      const response = await $fetch('/api/conversation', {
+        method: 'POST',
+        header: {
+          'Content-Type': 'application/json'
         },
-        idle_down_1: {
-          frame: { x: SPRITE_SHEET, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        idle_right_0: {
-          frame: { x: 0, y: SPRITE_SHEET, w: SPRITE_SHEET, h: SPRITE_SHEET },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        idle_right_1: {
-          frame: {
-            x: SPRITE_SHEET,
-            y: SPRITE_SHEET,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
+        body: JSON.stringify({
+          agent1: {
+            name: agent1.name,
+            role: agent1.role,
+            inclination: agent1.inclination
           },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        idle_up_0: {
-          frame: {
-            x: 0,
-            y: SPRITE_SHEET * 2,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        idle_up_1: {
-          frame: {
-            x: SPRITE_SHEET,
-            y: SPRITE_SHEET * 2,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_down_0: {
-          frame: {
-            x: 0,
-            y: SPRITE_SHEET * 3,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_down_1: {
-          frame: {
-            x: SPRITE_SHEET,
-            y: SPRITE_SHEET * 3,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_down_2: {
-          frame: {
-            x: SPRITE_SHEET * 1,
-            y: SPRITE_SHEET * 3,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_down_3: {
-          frame: {
-            x: SPRITE_SHEET * 2,
-            y: SPRITE_SHEET * 3,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-
-        //Walk right
-        walk_right_0: {
-          frame: {
-            x: 0,
-            y: SPRITE_SHEET * 4,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_right_1: {
-          frame: {
-            x: SPRITE_SHEET,
-            y: SPRITE_SHEET * 4,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_right_2: {
-          frame: {
-            x: SPRITE_SHEET * 1,
-            y: SPRITE_SHEET * 4,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_right_3: {
-          frame: {
-            x: SPRITE_SHEET * 2,
-            y: SPRITE_SHEET * 4,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-
-        //Walk up
-        walk_up_0: {
-          frame: {
-            x: 0,
-            y: SPRITE_SHEET * 5,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_up_1: {
-          frame: {
-            x: SPRITE_SHEET,
-            y: SPRITE_SHEET * 5,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_up_2: {
-          frame: {
-            x: SPRITE_SHEET * 1,
-            y: SPRITE_SHEET * 5,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-        walk_up_3: {
-          frame: {
-            x: SPRITE_SHEET * 2,
-            y: SPRITE_SHEET * 5,
-            w: SPRITE_SHEET,
-            h: SPRITE_SHEET,
-          },
-          sourceSize: { w: SPRITE_SHEET, h: SPRITE_SHEET },
-          spriteSourceSize: { x: 0, y: 0, w: SPRITE_SHEET, h: SPRITE_SHEET },
-        },
-      },
-      animations: {
-        idle_down: ["idle_down_0", "idle_down_1"],
-        idle_right: ["idle_right_0", "idle_right_1"],
-        idle_up: ["idle_up_0", "idle_up_1"],
-        idle_left: ["idle_right_0", "idle_right_1"],
-        walk_down: ["walk_down_0", "walk_down_1", "walk_down_2", "walk_down_3"],
-        walk_right: [
-          "walk_right_0",
-          "walk_right_1",
-          "walk_right_2",
-          "walk_right_3",
-        ],
-        walk_up: ["walk_up_0", "walk_up_1", "walk_up_2", "walk_up_3"],
-        walk_left: [
-          "walk_right_0",
-          "walk_right_1",
-          "walk_right_2",
-          "walk_right_3",
-        ],
-      },
-
-      meta: {
-        image: "../../sprites/humans/base/human_base.png",
-        format: "RGBA8888",
-        size: { w: 64, h: 192 },
-        scale: 1,
-      },
-    };
-
-    return atlasData;
-  };
+          agent2: {
+            name: agent1.name,
+            role: agent1.role,
+            inclination: agent2.inclination
+          }
+        }),
+      })
+      const conversation = await response;
+          
+      // Show speech bubbles
+      showThought(app.value, conversation.agent1_message, entity1.x, entity1.y, 8000, entity1);
+          
+      // Delay second message slightly
+      setTimeout(() => {
+        showThought(app.value!, conversation.agent2_message, entity2.x, entity2.y, 8000, entity2);
+      }, 2000);
+          
+      // Store in database
+      await storeConversation(
+        agent1.id,
+        agent2.id,
+        conversation.agent1_message,
+        conversation.agent2_message,
+        { x: (entity1.x + entity2.x) / 2, y: (entity1.y + entity2.y) / 2 }
+      );
+    } catch (error) {
+      console.log("Error occured while starting conversation: ", error);
+    }
+    
+  }
 
   const useHumanSpriteSheet = async () => {
     const atlasData = createSpriteSheetData();
@@ -351,6 +284,8 @@ export const useGameLoop = () => {
     spritesheet: PIXI.Spritesheet,
     x: number,
     y: number,
+    agentId: string,
+    agent: Agent,
     scale: number = 2,
   ) => {
     // console.log("Spritesheet in createAnimatedPerson:", spritesheet);
@@ -364,7 +299,8 @@ export const useGameLoop = () => {
     sprite.animationSpeed = 0.5;
     sprite.play();
 
-    return {
+    const entity =  {
+      agentId,
       sprite: sprite,
       spritesheet: spritesheet,
       x: x,
@@ -440,21 +376,52 @@ export const useGameLoop = () => {
         } else {
           this.setAnimation(`idle_${this.direction}`);
         }
+        // Update database position
+        updateAgentPosition(this.agentId, { x: this.x, y: this.y });
       },
     };
+    makeAgentClickable(entity.sprite, agent);
+    return entity
+  };
+  
+  const syncAgents = (updatedAgents: Agent[], spritesheet: PIXI.Spritesheet) => {
+    // Add new agents that don't have sprites yet
+    updatedAgents.forEach(agent => {
+      if (!agentSprites.has(agent.id)) {
+        const entity = createAnimatedPerson(
+          spritesheet,
+          agent.position.x,
+          agent.position.y,
+          agent.id,
+          agent,
+          1.5
+        );
+        agentSprites.set(agent.id, { ...entity, agent });
+        app.value!.stage.addChild(entity.sprite);
+      }
+    });
+  
+    // Remove agents that no longer exist
+    agentSprites.forEach((entity, agentId) => {
+      if (!updatedAgents.find(a => a.id === agentId)) {
+        app.value!.stage.removeChild(entity.sprite);
+        agentSprites.delete(agentId);
+      }
+    });
   };
 
-  const gameLoop = async (entitiesParam: any[], countriesParam: Country[]) => {
+
+  const gameLoop = async (countriesParam: any[]) => {
     if (isPaused.value) return;
     if (!app.value) return;
 
     const country = countriesParam[0];
     if (!country) return;
     const bounds = {
-      minX: country.territory[0]!.x + 20,
-      maxX: country.territory[1]!.x - 20,
-      minY: country.territory[0]!.y + 20,
-      maxY: country.territory[1]!.y - 20,
+      minX: country.territory_x1 + 20,
+      maxX: country.territory_x2 - 20,
+      minY: country.territory_y1 + 20,
+      maxY: country.territory_y2 - 20,
     };
 
     // Check if it is time for ai to update position
@@ -463,10 +430,8 @@ export const useGameLoop = () => {
       lastAiUpdate = currentTime;
 
       // Ask AI for decisions for each entity
-      for (const entity of entitiesParam) {
-        const worldContext = {
-          bounds: bounds,
-        };
+      for (const [agentId, entity] of agentSprites.entries()) {
+        const worldContext = { bounds };
 
         try {
           const decision = await getAgentDecision(entity, worldContext)
@@ -493,23 +458,7 @@ export const useGameLoop = () => {
       }
     }
 
-    entitiesParam.forEach((entity) => {
-      // Random direction change (2% chance per frame)
-      // if (Math.random() < 0.02) {
-      //   const angle = Math.random() * Math.PI * 2;
-      //   entity.velocityX = Math.cos(angle) * entity.speed;
-      //   entity.velocityY = Math.sin(angle) * entity.speed;
-      // }
-
-      // // Boundary collision - bounce off edges
-      // if (entity.x < bounds.minX || entity.x > bounds.maxX) {
-      //   entity.velocityX *= -1;
-      //   entity.x = Math.max(bounds.minX, Math.min(bounds.maxX, entity.x));
-      // }
-      // if (entity.y < bounds.minY || entity.y > bounds.maxY) {
-      //   entity.velocityY *= -1;
-      //   entity.y = Math.max(bounds.minY, Math.min(bounds.maxY, entity.y));
-      // }
+    agentSprites.forEach((entity) => {
       // Move towards AI-set target
       entity.moveToTarget();
             
@@ -547,11 +496,6 @@ export const useGameLoop = () => {
   };
 
   return {
-    app,
-    agents,
-    houses,
-    countries,
-    event,
     selectedAgent,
     isPaused,
     initGame,

@@ -10,8 +10,11 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       reown_project_id: process.env.NUXT_PUBLIC_REOWN_PROJECT_ID,
+      supabaseUrl: process.env.SUPABASE_PROJECT_URL,
+      supabaseKey: process.env.SUPABASE_PUBLISHABLE_API_KEY,
     },
-    groq_api_key: process.env.NUXT_GROQ_API_KEY
+    groq_api_key: process.env.NUXT_GROQ_API_KEY,
+    groq_conversation_key: process.env.NUXT_GROQ_CONVERSATION_KEY
   },
   vite: {
     plugins: [

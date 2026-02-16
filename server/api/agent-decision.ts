@@ -16,35 +16,35 @@ export default defineEventHandler(async (event) => {
     console.log(`System prompt is: ${system_prompt}`)
     console.log(`User prompt is: ${user_prompt}`)
     
-    // const chat_completions = await groq.chat.completions.create({
-    //   messages: [
-    //     {
-    //       role: "system",
-    //       content: system_prompt
-    //     },
-    //     {
-    //       role: "user",
-    //       content: user_prompt
-    //     }
-    //   ],
-    //   model: "compound-beta-mini",
-    //   temperature: 0.8,
-    // })
-    // const chat_results = chat_completions.choices[0]!.message.content;
+    const chat_completions = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: system_prompt
+        },
+        {
+          role: "user",
+          content: user_prompt
+        }
+      ],
+      model: "compound-beta-mini",
+      temperature: 0.8,
+    })
+    const chat_results = chat_completions.choices[0]!.message.content;
     
-    // const clean_result = chat_results!.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    // const decision = JSON.parse(clean_result);
-    // console.log(`Clean agent decision: `, decision);
+    const clean_result = chat_results!.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const decision = JSON.parse(clean_result);
+    console.log(`Clean agent decision: `, decision);
     
-    // return decision
-    return {
-      action: 'move',
-      target: {
-        x: Math.floor(Math.random() * 661) + 120,
-        y: Math.floor(Math.random() * 661) + 120,
-      },
-      thought: 'Just wandering around...'
-    };
+    return decision
+    // return {
+    //   action: 'move',
+    //   target: {
+    //     x: Math.floor(Math.random() * 661) + 120,
+    //     y: Math.floor(Math.random() * 661) + 120,
+    //   },
+    //   thought: 'Just wandering around...'
+    // }; This is for testing purposes btw
     
   } catch (error) {
     console.log(`Error: ${error}`)
